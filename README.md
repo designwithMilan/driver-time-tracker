@@ -1,35 +1,23 @@
 # Driver Time Log
 
-A simple mobile-friendly app for drivers to log shifts, add notes/tags, export time data, and review daily/weekly totals.
+Mobile-friendly multi-user driver time logging app using Supabase Authentication and PostgreSQL.
 
-## Features
-- Email sign-up and login
-- Start/stop driver timer
-- Manual date/time entries
-- Daily and weekly reports
-- Notes and tags on each entry
-- CSV export
-- Mobile-ready interface
-- Local storage for demo use (no backend required)
+## Supabase updates required
 
-## Run locally
-Because this is a static front-end app, you can run it without installing dependencies.
+Run `supabase-admin.sql` in the Supabase SQL Editor. It adds driver names, creates profiles for existing users, creates profiles automatically for new signups, and allows admins to read profiles and all time entries.
 
-Option 1: Open `index.html` directly in a browser.
+After running the SQL:
 
-Option 2: Use a local server:
+1. Open the app and create a new account with a full name.
+2. In Supabase Authentication → Users, copy that user’s UUID.
+3. In SQL Editor, run:
 
-```bash
-cd driver-time-tracker
-python3 -m http.server 8000
+```sql
+update public.profiles
+set is_admin = true
+where id = 'PASTE_ADMIN_USER_UUID_HERE';
 ```
 
-Then open:
+4. Log out and back in as the admin. The Admin view will show a driver filter and driver names in entries.
 
-```text
-http://localhost:8000
-```
-
-## Notes
-- This version stores user accounts and entries in the browser using `localStorage`, so data stays on the device.
-- If you want, the next step can be adding a real backend with Supabase or Firebase for multi-device syncing and secure authentication.
+The frontend uses only the Supabase project URL and anon/public key. Never put the database password or service-role key in the frontend.

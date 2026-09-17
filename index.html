@@ -12,6 +12,7 @@
         <div>
           <p class="eyebrow">Fleet Time</p>
           <h1>Driver Time Log</h1>
+          <p id="welcomeText" class="welcome-text hidden"></p>
         </div>
         <button id="logoutBtn" class="button secondary hidden">Log out</button>
       </header>
@@ -24,16 +25,10 @@
               <button class="segment active" data-mode="login" type="button">Login</button>
               <button class="segment" data-mode="signup" type="button">Create account</button>
             </div>
-
             <form id="authForm">
-              <label>
-                Email
-                <input id="emailInput" type="email" placeholder="driver@email.com" required />
-              </label>
-              <label>
-                Password
-                <input id="passwordInput" type="password" placeholder="••••••••" required />
-              </label>
+              <label id="nameField" class="hidden">Full name<input id="nameInput" type="text" maxlength="100" placeholder="Alex Driver" /></label>
+              <label>Email<input id="emailInput" type="email" placeholder="driver@email.com" required /></label>
+              <label>Password<input id="passwordInput" type="password" placeholder="••••••••" required /></label>
               <button class="button primary full" type="submit">Continue</button>
             </form>
             <p id="authMessage" class="message" aria-live="polite"></p>
@@ -41,109 +36,26 @@
         </section>
 
         <section id="appScreen" class="hidden">
-          <div class="stats-grid">
-            <article class="stat-card accent">
-              <span>Today</span>
-              <strong id="todayHours">0h 00m</strong>
-            </article>
-            <article class="stat-card">
-              <span>This week</span>
-              <strong id="weekHours">0h 00m</strong>
-            </article>
-            <article class="stat-card">
-              <span>Active timer</span>
-              <strong id="timerStatus">Stopped</strong>
-            </article>
+          <div id="adminTools" class="panel admin-tools hidden">
+            <div class="panel-header"><h2>Admin view</h2><span class="admin-badge">Administrator</span></div>
+            <label>Filter by driver<select id="driverFilter"><option value="all">All drivers</option></select></label>
           </div>
-
-          <section class="panel">
-            <div class="panel-header">
-              <h2>Shift Timer</h2>
-            </div>
-            <div class="timer-card">
-              <div class="current-timer" id="elapsedTimer">00:00:00</div>
-              <div class="timer-actions">
-                <button id="startTimerBtn" class="button primary" type="button">Start shift</button>
-                <button id="stopTimerBtn" class="button danger" type="button">Stop shift</button>
-              </div>
-              <div class="timer-meta">
-                <label>
-                  Notes
-                  <input id="timerNotes" type="text" placeholder="Trip notes or route details" />
-                </label>
-                <label>
-                  Tags
-                  <input id="timerTags" type="text" placeholder="e.g. local, long-haul, delivery" />
-                </label>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header">
-              <h2>Manual Time Entry</h2>
-            </div>
-            <form id="manualEntryForm" class="manual-form">
-              <div class="field-row">
-                <label>
-                  Start date & time
-                  <input id="manualStart" type="datetime-local" required />
-                </label>
-                <label>
-                  End date & time
-                  <input id="manualEnd" type="datetime-local" required />
-                </label>
-              </div>
-
-              <div class="field-row stack-mobile">
-                <label>
-                  Notes
-                  <input id="manualNotes" type="text" placeholder="Customer stop, route, or issue" />
-                </label>
-                <label>
-                  Tags
-                  <input id="manualTags" type="text" placeholder="local, delivery, pickup" />
-                </label>
-              </div>
-
-              <div class="manual-actions">
-                <button class="button primary" type="submit">Save entry</button>
-                <button id="clearManualBtn" class="button secondary" type="button">Clear</button>
-              </div>
-            </form>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header split">
-              <h2>Time entries</h2>
-              <button id="exportCsvBtn" class="button secondary" type="button">Export CSV</button>
-            </div>
-            <div id="entriesList" class="entries-list"></div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header">
-              <h2>Reports</h2>
-            </div>
-            <div class="reports-grid">
-              <div>
-                <h3>Daily summary</h3>
-                <div id="dailyReport" class="report-box"></div>
-              </div>
-              <div>
-                <h3>Weekly summary</h3>
-                <div id="weeklyReport" class="report-box"></div>
-              </div>
-            </div>
-          </section>
+          <div class="stats-grid">
+            <article class="stat-card accent"><span>Today</span><strong id="todayHours">0h 00m</strong></article>
+            <article class="stat-card"><span>This week</span><strong id="weekHours">0h 00m</strong></article>
+            <article class="stat-card"><span>Active timer</span><strong id="timerStatus">Stopped</strong></article>
+          </div>
+          <section class="panel"><div class="panel-header"><h2>Shift Timer</h2></div><div class="timer-card"><div class="current-timer" id="elapsedTimer">00:00:00</div><div class="timer-actions"><button id="startTimerBtn" class="button primary" type="button">Start shift</button><button id="stopTimerBtn" class="button danger" type="button">Stop shift</button></div><div class="timer-meta"><label>Notes<input id="timerNotes" type="text" placeholder="Trip notes or route details" /></label><label>Tags<input id="timerTags" type="text" placeholder="e.g. local, long-haul, delivery" /></label></div></div></section>
+          <section class="panel"><div class="panel-header"><h2>Manual Time Entry</h2></div><form id="manualEntryForm"><div class="field-row"><label>Start date & time<input id="manualStart" type="datetime-local" required /></label><label>End date & time<input id="manualEnd" type="datetime-local" required /></label></div><div class="field-row stack-mobile"><label>Notes<input id="manualNotes" type="text" placeholder="Customer stop, route, or issue" /></label><label>Tags<input id="manualTags" type="text" placeholder="local, delivery, pickup" /></label></div><div class="manual-actions"><button class="button primary" type="submit">Save entry</button><button id="clearManualBtn" class="button secondary" type="button">Clear</button></div></form></section>
+          <section class="panel"><div class="panel-header split"><h2>Time entries</h2><button id="exportCsvBtn" class="button secondary" type="button">Export CSV</button></div><div id="entriesList" class="entries-list"></div></section>
+          <section class="panel"><div class="panel-header"><h2>Reports</h2></div><div class="reports-grid"><div><h3>Daily summary</h3><div id="dailyReport" class="report-box"></div></div><div><h3>Weekly summary</h3><div id="weeklyReport" class="report-box"></div></div></div></section>
         </section>
       </main>
     </div>
-
     <script>
       window.APP_SUPABASE = {
         url: 'https://xvppagxtertvaicoebzh.supabase.co',
-        anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh2cHBhZ3h0ZXJ0dmFpY29lYnpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1OTE1MjcsImV4cCI6MjEwNTE2NzUyN30.WeV5GPo9Qu8pObz3BG9HYp6mo3RcCJq9QaiMAeD6wH0'
+        anonKey: 'PASTE_THE_COMPLETE_ANON_PUBLIC_KEY_HERE'
       };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

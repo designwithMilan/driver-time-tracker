@@ -1,0 +1,6 @@
+/* Add these rules to the existing stylesheet. */
+.welcome-text { margin: 6px 0 0; color: var(--muted); font-size: .95rem; }
+.admin-tools { margin-bottom: 18px; }
+.admin-tools label { max-width: 420px; }
+.admin-tools select { display: block; width: 100%; margin-top: 7px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.admin-badge { color: var(--primary); font-size: .85rem; font-weight: 700; }
