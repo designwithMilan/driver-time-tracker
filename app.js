@@ -1,17 +1,9 @@
 (function () {
   const supabaseUrl = window.APP_SUPABASE?.url || '';
   const supabaseAnonKey = window.APP_SUPABASE?.anonKey || '';
-
   const supabase = supabaseUrl && supabaseAnonKey
-  ? window.supabase.createClient(supabaseUrl, supabaseAnonKey)
-  : null;
-  
-  const STORAGE_KEYS = {
-    users: 'driverTimeTrackerUsers',
-    entries: 'driverTimeTrackerEntries',
-    activeTimer: 'driverTimeTrackerActiveTimer',
-    currentUser: 'driverTimeTrackerCurrentUser'
-  };
+    ? window.supabase.createClient(supabaseUrl, supabaseAnonKey)
+    : null;
 
   const state = {
     mode: 'login',
@@ -49,37 +41,6 @@
     weeklyReport: document.getElementById('weeklyReport'),
     exportCsvBtn: document.getElementById('exportCsvBtn')
   };
-
-  function loadFromStorage() {
-    state.entries = JSON.parse(localStorage.getItem(STORAGE_KEYS.entries) || '[]');
-    state.timer = JSON.parse(localStorage.getItem(STORAGE_KEYS.activeTimer) || 'null');
-    const currentUser = localStorage.getItem(STORAGE_KEYS.currentUser);
-    state.activeUser = currentUser || null;
-  }
-
-  function saveEntries() {
-    localStorage.setItem(STORAGE_KEYS.entries, JSON.stringify(state.entries));
-  }
-
-  function saveTimer() {
-    localStorage.setItem(STORAGE_KEYS.activeTimer, JSON.stringify(state.timer));
-  }
-
-  function saveCurrentUser() {
-    if (state.activeUser) {
-      localStorage.setItem(STORAGE_KEYS.currentUser, state.activeUser);
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.currentUser);
-    }
-  }
-
-  function getUsers() {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.users) || '[]');
-  }
-
-  function saveUsers(users) {
-    localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
-  }
 
   function parseLocalDateTime(value) {
     if (!value) return null;
@@ -131,6 +92,107 @@
     return start;
   }
 
+  function calculateDurationMinutes(start, end) {
+    const startTime = new Date(start).getTime();
+    const endTime = new Date(end).getTime();
+    if (Number.isNaN(startTime) || Number.isNaN(endTime)) return 0;
+    return Math.max(0, (endTime - startTime) / 60000);
+  }
+
+  function setMessage(text, kind = '') {
+    els.authMessage.textContent = text;
+    els.authMessage.className = `message ${kind}`.trim();
+  }
+
+  function setMode(mode) {
+    state.mode = mode;
+    els.segments.forEach((button) => {
+      const isActive = button.dataset.mode === mode;
+      button.classList.toggle('active', isActive);
+    });
+    els.authTitle.textContent = mode === 'signup' ? 'Create Account' : 'Driver Login';
+    if (mode === 'signup') {
+      els.authForm.querySelector('button[type="submit"]').textContent = 'Create account';
+    } else {
+      els.authForm.querySelector('button[type="submit"]').textContent = 'Continue';
+    }
+  }
+
+  async function createUser(email, password) {
+    if (!supabase) {
+      return { ok: false, message: 'Supabase is not configured.' };
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password
+    });
+
+    if (error) {
+      return { ok: false, message: error.message };
+    }
+
+    return {
+      ok: true,
+      message: 'Account created successfully. Check your email for confirmation if required.'
+    };
+  }
+
+  async function authenticate(email, password) {
+    if (!supabase) {
+      return { ok: false, message: 'Supabase is not configured.' };
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      return { ok: false, message: error.message };
+    }
+
+    return { ok: true, user: data.user };
+  }
+
+  async function loadEntriesFromSupabase() {
+    if (!supabase) {
+      state.entries = [];
+      return;
+    }
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      state.entries = [];
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('start_time', { ascending: false });
+
+    if (error) {
+      console.error(error);
+      state.entries = [];
+      return;
+    }
+
+    state.entries = data.map((entry) => ({
+      id: entry.id,
+      userEmail: user.email,
+      start: entry.start_time,
+      end: entry.end_time || entry.start_time,
+      durationMinutes: entry.end_time
+        ? (new Date(entry.end_time) - new Date(entry.start_time)) / 60000
+        : 0,
+      notes: entry.notes || 'No notes added.',
+      tags: entry.tags || []
+    }));
+  }
+
   function getFilteredEntries() {
     if (!state.activeUser) return [];
     return state.entries
@@ -138,11 +200,135 @@
       .sort((a, b) => new Date(b.start) - new Date(a.start));
   }
 
-  function calculateDurationMinutes(start, end) {
-    const startTime = new Date(start).getTime();
-    const endTime = new Date(end).getTime();
-    if (Number.isNaN(startTime) || Number.isNaN(endTime)) return 0;
-    return Math.max(0, (endTime - startTime) / 60000);
+  function renderEntries() {
+    const entries = getFilteredEntries();
+    if (!entries.length) {
+      els.entriesList.innerHTML = '<div class=\"empty-state\">No time entries yet.</div>';
+      return;
+    }
+
+    els.entriesList.innerHTML = entries
+      .map((entry) => {
+        const tags = (entry.tags || []).map((tag) => `<span class=\"tag\">${tag}</span>`).join('');
+        return `
+          <article class=\"entry-item\">
+            <div class=\"entry-top\">
+              <div>
+                <div class=\"entry-time\">${formatDateTime(entry.start)} → ${formatDateTime(entry.end)}</div>
+              </div>
+              <span class=\"duration-badge\">${formatHoursMinutes(entry.durationMinutes)}</span>
+            </div>
+            <div class=\"entry-notes\">${entry.notes || 'No notes added.'}</div>
+            <div class=\"tags\">${tags || '<span class=\"tag\">untagged</span>'}</div>
+          </article>
+        `;
+      })
+      .join('');
+  }
+
+  function renderDailyReport() {
+    const entries = getFilteredEntries();
+    if (!entries.length) {
+      els.dailyReport.innerHTML = '<div class=\"empty-state\">No entries for today.</div>';
+      return;
+    }
+
+    const group = {};
+    entries.forEach((entry) => {
+      const key = getDayKey(entry.start);
+      if (!group[key]) group[key] = 0;
+      group[key] += entry.durationMinutes;
+    });
+
+    const rows = Object.entries(group)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .slice(0, 7)
+      .map(([date, minutes]) => `
+        <div class=\"report-row\">
+          <span>${date}</span>
+          <strong>${formatHoursMinutes(minutes)}</strong>
+        </div>
+      `)
+      .join('');
+
+    els.dailyReport.innerHTML = rows;
+  }
+
+  function renderWeeklyReport() {
+    const entries = getFilteredEntries();
+    if (!entries.length) {
+      els.weeklyReport.innerHTML = '<div class=\"empty-state\">No weekly data yet.</div>';
+      return;
+    }
+
+    const group = {};
+    entries.forEach((entry) => {
+      const start = new Date(entry.start);
+      const weekStart = getWeekStart(start);
+      const key = weekStart.toISOString().slice(0, 10);
+      if (!group[key]) group[key] = 0;
+      group[key] += entry.durationMinutes;
+    });
+
+    const rows = Object.entries(group)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .slice(0, 8)
+      .map(([week, minutes]) => `
+        <div class=\"report-row\">
+          <span>${week}</span>
+          <strong>${formatHoursMinutes(minutes)}</strong>
+        </div>
+      `)
+      .join('');
+
+    els.weeklyReport.innerHTML = rows;
+  }
+
+  function renderDashboard() {
+    renderEntries();
+    renderDailyReport();
+    renderWeeklyReport();
+    updateSummaryCards();
+  }
+
+  async function loginUser(email) {
+    const { data: { user }, error } = await supabase.auth.getUser();
+
+    if (error || !user) {
+      setMessage('Session is not available. Please sign in again.', 'error');
+      return;
+    }
+
+    state.activeUser = user.email.toLowerCase();
+    els.authScreen.classList.add('hidden');
+    els.appScreen.classList.remove('hidden');
+    els.logoutBtn.classList.remove('hidden');
+    els.emailInput.value = '';
+    els.passwordInput.value = '';
+
+    await loadEntriesFromSupabase();
+    renderDashboard();
+  }
+
+  async function logoutUser() {
+    if (!supabase) {
+      setMessage('Supabase is not configured.', 'error');
+      return;
+    }
+
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      setMessage(error.message, 'error');
+      return;
+    }
+
+    state.activeUser = null;
+    state.entries = [];
+    els.appScreen.classList.add('hidden');
+    els.authScreen.classList.remove('hidden');
+    els.logoutBtn.classList.add('hidden');
+    setMessage('');
   }
 
   function updateSummaryCards() {
@@ -175,168 +361,48 @@
     }
   }
 
-  function renderEntries() {
-    const entries = getFilteredEntries();
-    if (!entries.length) {
-      els.entriesList.innerHTML = '<div class="empty-state">No time entries yet.</div>';
+  function parseTags(value) {
+    return value
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  }
+
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+
+    const email = els.emailInput.value.trim();
+    const password = els.passwordInput.value.trim();
+
+    if (!email || !password) {
+      setMessage('Please enter both email and password.', 'error');
       return;
     }
 
-    els.entriesList.innerHTML = entries
-      .map((entry) => {
-        const tags = (entry.tags || []).map((tag) => `<span class="tag">${tag}</span>`).join('');
-        return `
-          <article class="entry-item">
-            <div class="entry-top">
-              <div>
-                <div class="entry-time">${formatDateTime(entry.start)} → ${formatDateTime(entry.end)}</div>
-              </div>
-              <span class="duration-badge">${formatHoursMinutes(entry.durationMinutes)}</span>
-            </div>
-            <div class="entry-notes">${entry.notes || 'No notes added.'}</div>
-            <div class="tags">${tags || '<span class="tag">untagged</span>'}</div>
-          </article>
-        `;
-      })
-      .join('');
-  }
+    if (state.mode === 'signup') {
+      const result = await createUser(email, password);
+      if (!result.ok) {
+        setMessage(result.message, 'error');
+        return;
+      }
 
-  function renderDailyReport() {
-    const entries = getFilteredEntries();
-    if (!entries.length) {
-      els.dailyReport.innerHTML = '<div class="empty-state">No entries for today.</div>';
+      setMessage(result.message, 'success');
+      setMode('login');
+      els.emailInput.value = email;
+      els.passwordInput.value = password;
       return;
     }
 
-    const group = {};
-    entries.forEach((entry) => {
-      const key = getDayKey(entry.start);
-      if (!group[key]) group[key] = 0;
-      group[key] += entry.durationMinutes;
-    });
-
-    const rows = Object.entries(group)
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .slice(0, 7)
-      .map(([date, minutes]) => `
-        <div class="report-row">
-          <span>${date}</span>
-          <strong>${formatHoursMinutes(minutes)}</strong>
-        </div>
-      `)
-      .join('');
-
-    els.dailyReport.innerHTML = rows;
-  }
-
-  function renderWeeklyReport() {
-    const entries = getFilteredEntries();
-    if (!entries.length) {
-      els.weeklyReport.innerHTML = '<div class="empty-state">No weekly data yet.</div>';
+    const result = await authenticate(email, password);
+    if (!result.ok) {
+      setMessage(result.message, 'error');
       return;
     }
 
-    const group = {};
-    entries.forEach((entry) => {
-      const start = new Date(entry.start);
-      const weekStart = getWeekStart(start);
-      const key = weekStart.toISOString().slice(0, 10);
-      if (!group[key]) group[key] = 0;
-      group[key] += entry.durationMinutes;
-    });
-
-    const rows = Object.entries(group)
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .slice(0, 8)
-      .map(([week, minutes]) => `
-        <div class="report-row">
-          <span>${week}</span>
-          <strong>${formatHoursMinutes(minutes)}</strong>
-        </div>
-      `)
-      .join('');
-
-    els.weeklyReport.innerHTML = rows;
+    await loginUser(email);
   }
 
-  function renderDashboard() {
-    renderEntries();
-    renderDailyReport();
-    renderWeeklyReport();
-    updateSummaryCards();
-  }
-
-  function setMessage(text, kind = '') {
-    els.authMessage.textContent = text;
-    els.authMessage.className = `message ${kind}`.trim();
-  }
-
-  function setMode(mode) {
-    state.mode = mode;
-    els.segments.forEach((button) => {
-      const isActive = button.dataset.mode === mode;
-      button.classList.toggle('active', isActive);
-    });
-    els.authTitle.textContent = mode === 'signup' ? 'Create Account' : 'Driver Login';
-    if (mode === 'signup') {
-      els.authForm.querySelector('button[type="submit"]').textContent = 'Create account';
-    } else {
-      els.authForm.querySelector('button[type="submit"]').textContent = 'Continue';
-    }
-  }
-
-  function createUser(email, password) {
-    const users = getUsers();
-    const exists = users.some((user) => user.email.toLowerCase() === email.toLowerCase());
-    if (exists) {
-      return { ok: false, message: 'An account with this email already exists.' };
-    }
-
-    users.push({ email: email.toLowerCase(), password });
-    saveUsers(users);
-    return { ok: true, message: 'Account created successfully.' };
-  }
-
-  function authenticate(email, password) {
-    const users = getUsers();
-    const user = users.find((item) => item.email.toLowerCase() === email.toLowerCase());
-    if (!user) {
-      return { ok: false, message: 'No account found for this email address.' };
-    }
-    if (user.password !== password) {
-      return { ok: false, message: 'Incorrect password.' };
-    }
-    return { ok: true };
-  }
-
-  function loginUser(email) {
-    state.activeUser = email.toLowerCase();
-    saveCurrentUser();
-    els.authScreen.classList.add('hidden');
-    els.appScreen.classList.remove('hidden');
-    els.logoutBtn.classList.remove('hidden');
-    els.emailInput.value = '';
-    els.passwordInput.value = '';
-    renderDashboard();
-  }
-
-  function logoutUser() {
-    state.activeUser = null;
-    saveCurrentUser();
-    els.appScreen.classList.add('hidden');
-    els.authScreen.classList.remove('hidden');
-    els.logoutBtn.classList.add('hidden');
-    setMessage('');
-  }
-
-  function ensureTimerState() {
-    if (state.timer && state.timer.userEmail !== state.activeUser) {
-      state.timer = null;
-      saveTimer();
-    }
-  }
-
-  function startTimer() {
+  async function startTimer() {
     if (!state.activeUser) return;
     if (state.timer) {
       setMessage('A timer is already running.', 'error');
@@ -349,105 +415,97 @@
       notes: els.timerNotes.value.trim(),
       tags: parseTags(els.timerTags.value)
     };
-    saveTimer();
+
     setMessage('Shift timer started.', 'success');
     updateSummaryCards();
   }
 
-  function stopTimer() {
+  async function stopTimer() {
     if (!state.activeUser || !state.timer) return;
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setMessage('Please log in again.', 'error');
+      return;
+    }
 
     const start = new Date(state.timer.start);
     const end = new Date();
-    const durationMinutes = calculateDurationMinutes(start, end);
+    const notes = state.timer.notes || els.timerNotes.value.trim() || 'Shift logged';
+    const tags = state.timer.tags.length ? state.timer.tags : parseTags(els.timerTags.value);
 
-    state.entries.push({
-      id: crypto.randomUUID(),
-      userEmail: state.activeUser,
-      start: start.toISOString(),
-      end: end.toISOString(),
-      durationMinutes,
-      notes: state.timer.notes || els.timerNotes.value.trim() || 'Shift logged',
-      tags: state.timer.tags.length ? state.timer.tags : parseTags(els.timerTags.value)
-    });
+    const { error } = await supabase
+      .from('time_entries')
+      .insert([
+        {
+          user_id: user.id,
+          start_time: start.toISOString(),
+          end_time: end.toISOString(),
+          notes,
+          tags
+        }
+      ]);
 
-    saveEntries();
+    if (error) {
+      setMessage(error.message, 'error');
+      return;
+    }
+
     state.timer = null;
-    saveTimer();
     els.timerNotes.value = '';
     els.timerTags.value = '';
+
+    await loadEntriesFromSupabase();
     renderDashboard();
     setMessage('Shift saved.', 'success');
   }
 
-  function parseTags(value) {
-    return value
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-  }
-
-  function handleAuthSubmit(event) {
+  async function handleManualEntry(event) {
     event.preventDefault();
-    const email = els.emailInput.value.trim();
-    const password = els.passwordInput.value.trim();
 
-    if (!email || !password) {
-      setMessage('Please enter both email and password.', 'error');
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setMessage('Please log in again.', 'error');
       return;
     }
-
-    if (state.mode === 'signup') {
-      const result = createUser(email, password);
-      if (!result.ok) {
-        setMessage(result.message, 'error');
-        return;
-      }
-      setMessage(result.message, 'success');
-      setMode('login');
-      els.emailInput.value = email;
-      els.passwordInput.value = password;
-      return;
-    }
-
-    const result = authenticate(email, password);
-    if (!result.ok) {
-      setMessage(result.message, 'error');
-      return;
-    }
-
-    loginUser(email);
-  }
-
-  function handleManualEntry(event) {
-    event.preventDefault();
-    if (!state.activeUser) return;
 
     const start = parseLocalDateTime(els.manualStart.value);
     const end = parseLocalDateTime(els.manualEnd.value);
+
     if (!start || !end) {
       setMessage('Select both a start and end time.', 'error');
       return;
     }
+
     if (end <= start) {
       setMessage('End time must be later than start time.', 'error');
       return;
     }
 
-    const durationMinutes = calculateDurationMinutes(start, end);
-    const entry = {
-      id: crypto.randomUUID(),
-      userEmail: state.activeUser,
-      start: start.toISOString(),
-      end: end.toISOString(),
-      durationMinutes,
-      notes: els.manualNotes.value.trim() || 'Manual entry',
-      tags: parseTags(els.manualTags.value)
-    };
+    const notes = els.manualNotes.value.trim() || 'Manual entry';
+    const tags = parseTags(els.manualTags.value);
 
-    state.entries.push(entry);
-    saveEntries();
+    const { error } = await supabase
+      .from('time_entries')
+      .insert([
+        {
+          user_id: user.id,
+          start_time: start.toISOString(),
+          end_time: end.toISOString(),
+          notes,
+          tags
+        }
+      ]);
+
+    if (error) {
+      setMessage(error.message, 'error');
+      return;
+    }
+
     els.manualEntryForm.reset();
+    await loadEntriesFromSupabase();
     renderDashboard();
     setMessage('Manual entry saved.', 'success');
   }
@@ -480,12 +538,31 @@
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-                
+
     setMessage('CSV export created.', 'success');
   }
 
-  function init() {
-    loadFromStorage();
+  async function init() {
+    if (supabase) {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        state.activeUser = session.user.email;
+        await loadEntriesFromSupabase();
+        els.authScreen.classList.add('hidden');
+        els.appScreen.classList.remove('hidden');
+        els.logoutBtn.classList.remove('hidden');
+        renderDashboard();
+      } else {
+        els.authScreen.classList.remove('hidden');
+        els.appScreen.classList.add('hidden');
+      }
+    } else {
+      els.authScreen.classList.remove('hidden');
+      els.appScreen.classList.add('hidden');
+      setMessage('Supabase is not configured. Add your project URL and anon key.', 'error');
+    }
+
     els.segments.forEach((button) => {
       button.addEventListener('click', () => setMode(button.dataset.mode));
     });
@@ -498,20 +575,7 @@
     els.clearManualBtn.addEventListener('click', () => els.manualEntryForm.reset());
     els.exportCsvBtn.addEventListener('click', exportToCsv);
 
-    if (state.activeUser) {
-      loginUser(state.activeUser);
-    } else {
-      els.authScreen.classList.remove('hidden');
-      els.appScreen.classList.add('hidden');
-    }
-
     setMode('login');
-    setInterval(() => {
-      if (state.activeUser) {
-        ensureTimerState();
-        updateSummaryCards();
-      }
-    }, 1000);
   }
 
   init();
