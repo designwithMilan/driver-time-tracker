@@ -1,4 +1,11 @@
 (function () {
+  const supabaseUrl = window.APP_SUPABASE?.url || '';
+  const supabaseAnonKey = window.APP_SUPABASE?.anonKey || '';
+
+  const supabase = supabaseUrl && supabaseAnonKey
+  ? window.supabase.createClient(supabaseUrl, supabaseAnonKey)
+  : null;
+  
   const STORAGE_KEYS = {
     users: 'driverTimeTrackerUsers',
     entries: 'driverTimeTrackerEntries',
